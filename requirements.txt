@@ -1,0 +1,21 @@
+# Core Dependencies
+PyQt5>=5.15.9,<6.0.0  # GUI framework
+requests>=2.31.0,<3.0.0  # HTTP requests
+python-nmap>=0.7.1,<0.8.0  # Port scanning
+beautifulsoup4>=4.12.2,<5.0.0  # HTML parsing
+defusedxml>=0.7.1,<0.8.0  # Secure XML parsing
+pyopenssl>=23.2.0,<25.0.0  # SSL/TLS support
+cryptography>=41.0.4,<43.0.0  # Cryptography functions
+python-whois>=0.9.3,<0.10.0  # WHOIS lookups
+
+# Development Dependencies
+pytest>=7.4.0,<8.0.0  # Testing framework
+pytest-qt>=4.2.0,<5.0.0  # PyQt testing
+black>=23.7.0,<24.0.0  # Code formatting
+flake8>=6.1.0,<7.0.0  # Linting
+mypy>=1.5.0,<2.0.0  # Static type checking
+
+# Optional Dependencies
+# pyside6>=6.5.0,<7.0.0  # Alternative to PyQt5 (uncomment if needed)
+# lxml>=4.9.0,<5.0.0  # Faster XML parsing (requires C++ build tools)
+dnspython>=2.3.0
