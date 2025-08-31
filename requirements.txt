@@ -1,7 +1,9 @@
 # Core Dependencies
 PyQt5>=5.15.9,<6.0.0  # GUI framework
 requests>=2.31.0,<3.0.0  # HTTP requests
-python-nmap>=0.7.1,<0.8.0  # Port scanning
+scapy>=2.5.0,<3.0.0  # Packet manipulation and network scanning
+httpx>=0.27.0,<0.29.0  # Async HTTP client for service detection
+dnspython>=2.3.0,<3.0.0  # DNS toolkit
 beautifulsoup4>=4.12.2,<5.0.0  # HTML parsing
 defusedxml>=0.7.1,<0.8.0  # Secure XML parsing
 pyopenssl>=23.2.0,<25.0.0  # SSL/TLS support
@@ -18,4 +20,6 @@ mypy>=1.5.0,<2.0.0  # Static type checking
 # Optional Dependencies
 # pyside6>=6.5.0,<7.0.0  # Alternative to PyQt5 (uncomment if needed)
 # lxml>=4.9.0,<5.0.0  # Faster XML parsing (requires C++ build tools)
+# python-nmap>=0.7.1,<0.8.0  # Original nmap Python bindings (uncomment if needed)
+# python-nmap-3>=0.3.0,<0.4.0  # Pure Python Nmap port scanner (uncomment if needed)
 dnspython>=2.3.0

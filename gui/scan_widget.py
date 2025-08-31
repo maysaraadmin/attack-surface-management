@@ -1,12 +1,379 @@
 # gui/scan_widget.py
-from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
-                            QLabel, QLineEdit, QPushButton, QTextEdit,
-                            QComboBox, QCheckBox, QProgressBar, QListWidget,
-                            QMessageBox)
-from PyQt5.QtCore import Qt, QThread, pyqtSignal
-from core.scanner import NetworkScanner
+import os
 import socket
+import asyncio
 from urllib.parse import urlparse
+
+from PyQt5.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QLabel, QLineEdit, 
+    QPushButton, QTextEdit, QComboBox, QCheckBox, QProgressBar, QListWidget,
+    QMessageBox, QFormLayout, QSpinBox, QGridLayout, QSplitter, QTabWidget,
+    QTableWidget, QTableWidgetItem, QHeaderView, QStyle, QFileDialog
+)
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, pyqtSlot, QObject, QSize
+from PyQt5.QtGui import QFont, QTextCursor, QColor, QIcon, QPixmap
+
+from core.scanner import NetworkScanner
+
+class ScanWidget(QWidget):
+    """Widget for configuring and running security scans"""
+    
+    # Signals
+    scan_started = pyqtSignal()
+    scan_finished = pyqtSignal(dict)
+    scan_error = pyqtSignal(str)
+    progress_updated = pyqtSignal(int, str)  # progress, status
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.scanner = NetworkScanner()
+        self.scan_thread = None
+        self.is_scanning = False
+        self.setup_ui()
+        self.setup_connections()
+        
+    def setup_ui(self):
+        """Initialize the UI components"""
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(10, 10, 10, 10)
+        main_layout.setSpacing(10)
+        
+        # Create a splitter for resizable panels
+        splitter = QSplitter(Qt.Vertical)
+        
+        # Top panel: Scan configuration
+        config_group = QGroupBox("Scan Configuration")
+        config_layout = QFormLayout()
+        
+        # Target input
+        self.target_input = QLineEdit()
+        self.target_input.setPlaceholderText("example.com or 192.168.1.1")
+        config_layout.addRow("Target:", self.target_input)
+        
+        # Scan type
+        self.scan_type_combo = QComboBox()
+        self.scan_type_combo.addItems([
+            "Quick Scan (Top 100 ports)",
+            "Full Port Scan (1-65535)",
+            "Custom Port Range",
+            "Web Application Scan"
+        ])
+        config_layout.addRow("Scan Type:", self.scan_type_combo)
+        
+        # Port range (initially hidden)
+        self.port_range_layout = QHBoxLayout()
+        self.port_start = QSpinBox()
+        self.port_start.setRange(1, 65535)
+        self.port_start.setValue(1)
+        self.port_end = QSpinBox()
+        self.port_end.setRange(1, 65535)
+        self.port_end.setValue(1024)
+        
+        self.port_range_layout.addWidget(QLabel("From:"))
+        self.port_range_layout.addWidget(self.port_start)
+        self.port_range_layout.addWidget(QLabel("To:"))
+        self.port_range_layout.addWidget(self.port_end)
+        self.port_range_layout.addStretch()
+        
+        self.port_range_widget = QWidget()
+        self.port_range_widget.setLayout(self.port_range_layout)
+        self.port_range_widget.setVisible(False)  # Hidden by default
+        config_layout.addRow("Port Range:", self.port_range_widget)
+        
+        # Scan options
+        self.scan_options_group = QGroupBox("Scan Options")
+        options_layout = QGridLayout()
+        
+        self.aggressive_check = QCheckBox("Aggressive Scan")
+        self.service_version_check = QCheckBox("Service Version Detection")
+        self.os_detection_check = QCheckBox("OS Detection")
+        self.script_scan_check = QCheckBox("Script Scanning")
+        
+        options_layout.addWidget(self.aggressive_check, 0, 0)
+        options_layout.addWidget(self.service_version_check, 0, 1)
+        options_layout.addWidget(self.os_detection_check, 1, 0)
+        options_layout.addWidget(self.script_scan_check, 1, 1)
+        
+        self.scan_options_group.setLayout(options_layout)
+        config_layout.addRow(self.scan_options_group)
+        
+        # Buttons
+        button_layout = QHBoxLayout()
+        self.start_button = QPushButton("Start Scan")
+        self.start_button.setIcon(self.style().standardIcon(getattr(QStyle, 'SP_MediaPlay')))
+        self.start_button.setStyleSheet("font-weight: bold;")
+        
+        self.stop_button = QPushButton("Stop")
+        self.stop_button.setIcon(self.style().standardIcon(getattr(QStyle, 'SP_MediaStop')))
+        self.stop_button.setEnabled(False)
+        
+        button_layout.addWidget(self.start_button)
+        button_layout.addWidget(self.stop_button)
+        button_layout.addStretch()
+        
+        config_layout.addRow(button_layout)
+        config_group.setLayout(config_layout)
+        
+        # Progress bar
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setTextVisible(True)
+        self.progress_bar.setFormat("Ready")
+        self.progress_bar.setStyleSheet("""
+            QProgressBar {
+                border: 1px solid #c4c4c4;
+                border-radius: 3px;
+                text-align: center;
+            }
+            QProgressBar::chunk {
+                background-color: #4CAF50;
+                width: 10px;
+                margin: 0.5px;
+            }
+        """)
+        
+        # Results area
+        results_tabs = QTabWidget()
+        
+        # Ports tab
+        self.ports_table = QTableWidget()
+        self.ports_table.setColumnCount(5)
+        self.ports_table.setHorizontalHeaderLabels(["Port", "Protocol", "State", "Service", "Version"])
+        self.ports_table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
+        self.ports_table.horizontalHeader().setStretchLastSection(True)
+        self.ports_table.setSelectionBehavior(QTableWidget.SelectRows)
+        
+        # Hosts tab
+        self.hosts_table = QTableWidget()
+        self.hosts_table.setColumnCount(4)
+        self.hosts_table.setHorizontalHeaderLabels(["Host", "Status", "Open Ports", "OS"])
+        self.hosts_table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
+        
+        # Vulnerabilities tab
+        self.vuln_table = QTableWidget()
+        self.vuln_table.setColumnCount(5)
+        self.vuln_table.setHorizontalHeaderLabels(["CVE", "Severity", "Port", "Service", "Description"])
+        self.vuln_table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
+        
+        # Add tabs
+        results_tabs.addTab(self.ports_table, "Open Ports")
+        results_tabs.addTab(self.hosts_table, "Hosts")
+        results_tabs.addTab(self.vuln_table, "Vulnerabilities")
+        
+        # Log area
+        self.log_view = QTextEdit()
+        self.log_view.setReadOnly(True)
+        self.log_view.setFont(QFont("Courier New", 9))
+        
+        # Add widgets to splitter
+        splitter.addWidget(config_group)
+        splitter.addWidget(self.progress_bar)
+        splitter.addWidget(results_tabs)
+        splitter.addWidget(self.log_view)
+        
+        # Set initial sizes
+        splitter.setSizes([200, 30, 400, 200])
+        
+        main_layout.addWidget(splitter)
+        
+        # Status bar
+        self.status_bar = QStatusBar()
+        self.status_label = QLabel("Ready")
+        self.status_bar.addWidget(self.status_label)
+        
+        main_layout.addWidget(self.status_bar)
+    
+    def setup_connections(self):
+        """Set up signal/slot connections"""
+        self.start_button.clicked.connect(self.start_scan)
+        self.stop_button.clicked.connect(self.stop_scan)
+        self.scan_type_combo.currentIndexChanged.connect(self.update_scan_type)
+        
+        # Connect signals from the scan thread
+        self.scan_started.connect(self.on_scan_started)
+        self.scan_finished.connect(self.on_scan_finished)
+        self.scan_error.connect(self.on_scan_error)
+        self.progress_updated.connect(self.update_progress)
+    
+    def log_message(self, message, level="info"):
+        """Add a message to the log view"""
+        timestamp = QDateTime.currentDateTime().toString("[yyyy-MM-dd hh:mm:ss]")
+        
+        if level == "error":
+            color = "red"
+            prefix = "[ERROR]"
+        elif level == "warning":
+            color = "orange"
+            prefix = "[WARN]"
+        else:
+            color = "black"
+            prefix = "[INFO]"
+        
+        self.log_view.setTextColor(QColor(color))
+        self.log_view.append(f"{timestamp} {prefix} {message}")
+        self.log_view.moveCursor(QTextCursor.End)
+    
+    def update_progress(self, value, message):
+        """Update progress bar and status"""
+        self.progress_bar.setValue(value)
+        self.progress_bar.setFormat(f"{message} ({value}%)")
+        self.status_label.setText(message)
+    
+    def update_scan_type(self, index):
+        """Update UI based on selected scan type"""
+        if index == 2:  # Custom Port Range
+            self.port_range_widget.setVisible(True)
+        else:
+            self.port_range_widget.setVisible(False)
+    
+    def validate_target(self, target):
+        """Validate the target input"""
+        target = target.strip()
+        if not target:
+            return False, "Please enter a target to scan"
+        
+        # Basic validation for IP or hostname
+        try:
+            # Try to resolve the target
+            socket.gethostbyname(target)
+            return True, ""
+        except socket.gaierror:
+            return False, "Invalid hostname or IP address"
+    
+    def start_scan(self):
+        """Start the scanning process"""
+        target = self.target_input.text().strip()
+        valid, error = self.validate_target(target)
+        
+        if not valid:
+            QMessageBox.warning(self, "Validation Error", error)
+            return
+        
+        # Get scan options
+        scan_type = self.scan_type_combo.currentIndex()
+        options = {
+            'aggressive': self.aggressive_check.isChecked(),
+            'service_version': self.service_version_check.isChecked(),
+            'os_detection': self.os_detection_check.isChecked(),
+            'script_scan': self.script_scan_check.isChecked(),
+        }
+        
+        # Determine port range
+        if scan_type == 0:  # Quick Scan
+            ports = "1-1024"
+        elif scan_type == 1:  # Full Scan
+            ports = "1-65535"
+        elif scan_type == 2:  # Custom Range
+            start = self.port_start.value()
+            end = self.port_end.value()
+            if start > end:
+                QMessageBox.warning(self, "Error", "Start port cannot be greater than end port")
+                return
+            ports = f"{start}-{end}"
+        else:  # Web Scan
+            ports = "80,443,8080,8443"
+        
+        # Start the scan in a separate thread
+        self.scan_thread = ScanThread(self.scanner, target, ports, options)
+        self.scan_thread.finished.connect(self.on_scan_finished)
+        self.scan_thread.error.connect(self.on_scan_error)
+        self.scan_thread.progress.connect(self.progress_updated)
+        
+        self.scan_thread.start()
+        self.scan_started.emit()
+    
+    def stop_scan(self):
+        """Stop the current scan"""
+        if self.scan_thread and self.scan_thread.isRunning():
+            self.scan_thread.stop()
+            self.log_message("Scan stopped by user", "warning")
+            self.update_progress(0, "Scan stopped")
+    
+    def on_scan_started(self):
+        """Handle scan started event"""
+        self.is_scanning = True
+        self.start_button.setEnabled(False)
+        self.stop_button.setEnabled(True)
+        self.log_message("Scan started")
+    
+    def on_scan_finished(self, results):
+        """Handle scan completion"""
+        self.is_scanning = False
+        self.start_button.setEnabled(True)
+        self.stop_button.setEnabled(False)
+        
+        if results:
+            self.log_message(f"Scan completed. Found {len(results.get('hosts', []))} hosts.")
+            self.display_results(results)
+        else:
+            self.log_message("Scan completed with no results.", "warning")
+    
+    def on_scan_error(self, error):
+        """Handle scan errors"""
+        self.is_scanning = False
+        self.start_button.setEnabled(True)
+        self.stop_button.setEnabled(False)
+        
+        self.log_message(f"Scan error: {error}", "error")
+        QMessageBox.critical(self, "Scan Error", error)
+    
+    def display_results(self, results):
+        """Display scan results in the UI"""
+        # Clear previous results
+        self.ports_table.setRowCount(0)
+        self.hosts_table.setRowCount(0)
+        self.vuln_table.setRowCount(0)
+        
+        # Process hosts and ports
+        for host_data in results.get('hosts', []):
+            host = host_data.get('ip', 'Unknown')
+            status = host_data.get('status', 'unknown')
+            
+            # Add to hosts table
+            row = self.hosts_table.rowCount()
+            self.hosts_table.insertRow(row)
+            self.hosts_table.setItem(row, 0, QTableWidgetItem(host))
+            self.hosts_table.setItem(row, 1, QTableWidgetItem(status.capitalize()))
+            
+            # Process ports
+            for port_data in host_data.get('ports', []):
+                port = port_data.get('port', '')
+                protocol = port_data.get('protocol', 'tcp')
+                state = port_data.get('state', 'unknown')
+                service = port_data.get('service', 'unknown')
+                version = port_data.get('version', '')
+                
+                # Add to ports table
+                row = self.ports_table.rowCount()
+                self.ports_table.insertRow(row)
+                self.ports_table.setItem(row, 0, QTableWidgetItem(str(port)))
+                self.ports_table.setItem(row, 1, QTableWidgetItem(protocol.upper()))
+                self.ports_table.setItem(row, 2, QTableWidgetItem(state.capitalize()))
+                self.ports_table.setItem(row, 3, QTableWidgetItem(service))
+                self.ports_table.setItem(row, 4, QTableWidgetItem(version))
+                
+                # Process vulnerabilities if any
+                for vuln in port_data.get('vulnerabilities', []):
+                    row = self.vuln_table.rowCount()
+                    self.vuln_table.insertRow(row)
+                    self.vuln_table.setItem(row, 0, QTableWidgetItem(vuln.get('cve', 'N/A')))
+                    self.vuln_table.setItem(row, 1, QTableWidgetItem(vuln.get('severity', 'N/A')))
+                    self.vuln_table.setItem(row, 2, QTableWidgetItem(str(port)))
+                    self.vuln_table.setItem(row, 3, QTableWidgetItem(service))
+                    self.vuln_table.setItem(row, 4, QTableWidgetItem(vuln.get('description', '')))
+        
+        # Resize columns to content
+        for table in [self.ports_table, self.hosts_table, self.vuln_table]:
+            table.resizeColumnsToContents()
+    
+    def clear_results(self):
+        """Clear all scan results"""
+        self.ports_table.setRowCount(0)
+        self.hosts_table.setRowCount(0)
+        self.vuln_table.setRowCount(0)
+        self.log_view.clear()
+        self.progress_bar.setValue(0)
+        self.progress_bar.setFormat("Ready")
+        self.status_label.setText("Ready")
 
 class ScanWorker(QThread):
     """Worker thread for running scans in the background"""
@@ -39,13 +406,23 @@ class ScanWorker(QThread):
                     
                 if self.scan_type == "port_scan":
                     self.status_update.emit("Performing port scan...")
-                    result = self.scanner.port_scan(self.target)
-                    if 'error' in result:
-                        self.error.emit(f"Port scan failed: {result['error']}")
-                        self.finished.emit(False)
-                    else:
-                        self.result.emit(result)
-                        self.finished.emit(True)
+                    # Create a new event loop for the async operation
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    
+                    try:
+                        # Run the async port_scan method
+                        result = loop.run_until_complete(
+                            self.scanner.port_scan(self.target)
+                        )
+                        if 'error' in result:
+                            self.error.emit(f"Port scan failed: {result['error']}")
+                            self.finished.emit(False)
+                        else:
+                            self.result.emit(result)
+                            self.finished.emit(True)
+                    finally:
+                        loop.close()
                         
                 elif self.scan_type == "web_scan":
                     self.status_update.emit("Scanning web application...")

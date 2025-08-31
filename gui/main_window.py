@@ -1,21 +1,55 @@
 # gui/main_window.py
 import os
 import sys
-from PyQt5.QtWidgets import (QMainWindow, QTabWidget, QStatusBar, 
-                             QAction, QToolBar, QMessageBox, QVBoxLayout, 
-                             QWidget, QFileDialog, QLabel)
-from PyQt5.QtGui import QIcon, QPalette, QColor, QPixmap
-from PyQt5.QtCore import Qt, QSize, QDir
+import logging
+from pathlib import Path
+from PyQt5.QtWidgets import (QMainWindow, QTabWidget, QStatusBar, QAction, 
+                            QToolBar, QMessageBox, QVBoxLayout, QWidget, 
+                            QFileDialog, QLabel, QHBoxLayout, QSizePolicy, QProgressBar)
+from PyQt5.QtGui import QIcon, QPixmap, QFont, QPalette, QColor
+from PyQt5.QtCore import Qt, QSize, QDir, QSettings
+
+# Local imports
+from core.scanner import NetworkScanner
 from .dashboard_widget import DashboardWidget
 from .scan_widget import ScanWidget
 from .results_widget import ResultsWidget
 
-# Default icons as base64-encoded strings
+# Default icons mapping
 DEFAULT_ICONS = {
-    'new': 'document-new',
-    'scan': 'system-search',
-    'report': 'document-export'
+    'document-new': 'document-new',
+    'document-open': 'document-open',
+    'document-save': 'document-save',
+    'document-save-as': 'document-save-as',
+    'edit-cut': 'edit-cut',
+    'edit-copy': 'edit-copy',
+    'edit-paste': 'edit-paste',
+    'edit-delete': 'edit-delete',
+    'edit-find': 'edit-find',
+    'edit-find-replace': 'edit-find-replace',
+    'view-refresh': 'view-refresh',
+    'go-previous': 'go-previous',
+    'go-next': 'go-next',
+    'go-up': 'go-up',
+    'go-down': 'go-down',
+    'go-home': 'go-home',
+    'document-print': 'document-print',
+    'document-print-preview': 'document-print-preview',
+    'help-contents': 'help-contents',
+    'dialog-information': 'dialog-information',
+    'dialog-warning': 'dialog-warning',
+    'dialog-error': 'dialog-error',
+    'dialog-question': 'dialog-question',
+    'edit-undo': 'edit-undo',
+    'edit-redo': 'edit-redo',
+    'document-properties': 'document-properties',
+    'system-search': 'system-search',
+    'document-export': 'document-export',
+    'application-exit': 'application-exit'
 }
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 def get_icon(name):
     """Get icon from theme or fallback to default"""
