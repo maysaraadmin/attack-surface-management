@@ -60,3 +60,5 @@ New session started at 2025-09-17 12:14:12,712
 2025-09-17 12:14:14,174 - __main__ - INFO - Application started successfully
 2025-09-17 12:14:23,080 - asyncio - DEBUG - Using selector: SelectSelector
 2025-09-17 12:14:23,134 - __main__ - INFO - Application shutdown
+2025-09-17 12:16:03,415 - asyncio - DEBUG - Using selector: SelectSelector
+2025-09-17 12:16:03,440 - __main__ - INFO - Application shutdown
