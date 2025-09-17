@@ -1,6 +1,7 @@
 # main.py
 import sys
 import os
+import asyncio
 import traceback
 import logging
 from pathlib import Path
@@ -14,14 +15,48 @@ def setup_logging():
     log_dir = Path("logs")
     log_dir.mkdir(exist_ok=True)
     
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler(log_dir / "app.log"),
-            logging.StreamHandler()
-        ]
-    )
+    # Clear previous log file with error handling
+    log_file = log_dir / "app.log"
+    if log_file.exists():
+        try:
+            log_file.unlink()
+        except (PermissionError, OSError) as e:
+            # If we can't delete the file, try to append to it with a separator
+            try:
+                with open(log_file, 'a') as f:
+                    f.write("\n" + "="*50 + "\n")
+                    f.write(f"New session started at {logging.Formatter('%(asctime)s').formatTime(logging.LogRecord(None, None, '', 0, '', (), None))}\n")
+                    f.write("="*50 + "\n")
+            except Exception:
+                # If even appending fails, create a new log file with timestamp
+                timestamp = logging.Formatter('%Y%m%d_%H%M%S').formatTime(logging.LogRecord(None, None, '', 0, '', (), None))
+                log_file = log_dir / f"app_{timestamp}.log"
+    
+    # Set up root logger
+    logger = logging.getLogger()
+    logger.setLevel(logging.DEBUG)
+    
+    # File handler for all logs
+    file_handler = logging.FileHandler(log_file)
+    file_handler.setLevel(logging.DEBUG)
+    file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    file_handler.setFormatter(file_formatter)
+    
+    # Console handler for warnings and above
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    console_formatter = logging.Formatter('%(levelname)s: %(message)s')
+    console_handler.setFormatter(console_formatter)
+    
+    # Add handlers
+    logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
+    
+    # Enable debug logging for our application
+    logging.getLogger('__main__').setLevel(logging.DEBUG)
+    logging.getLogger('gui').setLevel(logging.DEBUG)
+    logging.getLogger('core').setLevel(logging.DEBUG)
+    
     return logging.getLogger(__name__)
 
 logger = setup_logging()
@@ -96,31 +131,28 @@ def main():
     try:
         logger.info("Starting application")
         
-        # Set up and configure the application
-        app = setup_application()
+        # Create application instance
+        app = QApplication(sys.argv)
         
-        try:
-            # Create and show main window
-            window = MainWindow()
-            window.show()
-            
-            logger.info("Application started successfully")
-            return app.exec_()
-            
-        except Exception as e:
-            logger.critical("Failed to create main window", exc_info=True)
-            handle_exception(type(e), e, e.__traceback__)
-            return 1
+        # Create and show main window
+        window = MainWindow()
+        window.show()
+        
+        # Start the event loop
+        logger.info("Application started successfully")
+        sys.exit(app.exec_())
             
     except Exception as e:
-        logger.critical("Failed to initialize application", exc_info=True)
-        handle_exception(type(e), e, e.__traceback__)
+        logger.critical(f"Fatal error: {str(e)}", exc_info=True)
+        if 'app' in locals():
+            QMessageBox.critical(
+                None,
+                "Fatal Error",
+                f"A fatal error occurred:\n{str(e)}\n\nCheck logs for more details."
+            )
         return 1
     finally:
         logger.info("Application shutdown")
-        # Ensure all resources are cleaned up
-        if 'app' in locals():
-            app.quit()
 
 if __name__ == '__main__':
     sys.exit(main())

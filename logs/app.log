@@ -1,0 +1,62 @@
+2025-09-17 12:05:04,968 - __main__ - INFO - Starting application
+2025-09-17 12:05:05,633 - gui.main_window - INFO - Initializing Dashboard tab...
+2025-09-17 12:05:09,070 - gui.main_window - INFO - Successfully initialized Dashboard tab
+2025-09-17 12:05:09,071 - gui.main_window - INFO - Initializing Scan tab...
+2025-09-17 12:05:09,071 - scanner - INFO - Initializing NetworkScanner
+2025-09-17 12:05:09,073 - scanner - INFO - NetworkScanner initialization completed successfully
+2025-09-17 12:05:09,126 - gui.main_window - INFO - Successfully initialized Scan tab
+2025-09-17 12:05:09,126 - gui.main_window - INFO - Initializing Results tab...
+2025-09-17 12:05:09,346 - gui.main_window - INFO - Successfully initialized Results tab
+2025-09-17 12:05:09,348 - gui.main_window - INFO - Successfully initialized 3 tabs
+2025-09-17 12:05:09,693 - __main__ - INFO - Application started successfully
+
+==================================================
+New session started at 2025-09-17 12:07:52,262
+==================================================
+2025-09-17 12:07:52,264 - __main__ - INFO - Starting application
+2025-09-17 12:07:52,323 - gui.main_window - INFO - Initializing Dashboard tab...
+2025-09-17 12:07:53,359 - gui.main_window - INFO - Successfully initialized Dashboard tab
+2025-09-17 12:07:53,360 - gui.main_window - INFO - Initializing Scan tab...
+2025-09-17 12:07:53,360 - scanner - INFO - Initializing NetworkScanner
+2025-09-17 12:07:53,361 - scanner - INFO - NetworkScanner initialization completed successfully
+2025-09-17 12:07:53,370 - gui.main_window - INFO - Successfully initialized Scan tab
+2025-09-17 12:07:53,370 - gui.main_window - INFO - Initializing Results tab...
+2025-09-17 12:07:53,388 - gui.main_window - INFO - Successfully initialized Results tab
+2025-09-17 12:07:53,389 - gui.main_window - INFO - Successfully initialized 3 tabs
+2025-09-17 12:07:53,516 - __main__ - INFO - Application started successfully
+2025-09-17 12:08:04,592 - asyncio - DEBUG - Using selector: SelectSelector
+2025-09-17 12:08:04,741 - __main__ - INFO - Application shutdown
+
+==================================================
+New session started at 2025-09-17 12:08:11,204
+==================================================
+2025-09-17 12:08:11,205 - __main__ - INFO - Starting application
+2025-09-17 12:08:11,240 - gui.main_window - INFO - Initializing Dashboard tab...
+2025-09-17 12:08:11,953 - gui.main_window - INFO - Successfully initialized Dashboard tab
+2025-09-17 12:08:11,954 - gui.main_window - INFO - Initializing Scan tab...
+2025-09-17 12:08:11,955 - scanner - INFO - Initializing NetworkScanner
+2025-09-17 12:08:11,956 - scanner - INFO - NetworkScanner initialization completed successfully
+2025-09-17 12:08:11,964 - gui.main_window - INFO - Successfully initialized Scan tab
+2025-09-17 12:08:11,966 - gui.main_window - INFO - Initializing Results tab...
+2025-09-17 12:08:11,982 - gui.main_window - INFO - Successfully initialized Results tab
+2025-09-17 12:08:11,983 - gui.main_window - INFO - Successfully initialized 3 tabs
+2025-09-17 12:08:12,107 - __main__ - INFO - Application started successfully
+2025-09-17 12:08:14,299 - asyncio - DEBUG - Using selector: SelectSelector
+2025-09-17 12:08:14,333 - __main__ - INFO - Application shutdown
+
+==================================================
+New session started at 2025-09-17 12:14:12,712
+==================================================
+2025-09-17 12:14:12,714 - __main__ - INFO - Starting application
+2025-09-17 12:14:12,750 - gui.main_window - INFO - Initializing Dashboard tab...
+2025-09-17 12:14:14,021 - gui.main_window - INFO - Successfully initialized Dashboard tab
+2025-09-17 12:14:14,022 - gui.main_window - INFO - Initializing Scan tab...
+2025-09-17 12:14:14,022 - scanner - INFO - Initializing NetworkScanner
+2025-09-17 12:14:14,023 - scanner - INFO - NetworkScanner initialization completed successfully
+2025-09-17 12:14:14,030 - gui.main_window - INFO - Successfully initialized Scan tab
+2025-09-17 12:14:14,030 - gui.main_window - INFO - Initializing Results tab...
+2025-09-17 12:14:14,047 - gui.main_window - INFO - Successfully initialized Results tab
+2025-09-17 12:14:14,047 - gui.main_window - INFO - Successfully initialized 3 tabs
+2025-09-17 12:14:14,174 - __main__ - INFO - Application started successfully
+2025-09-17 12:14:23,080 - asyncio - DEBUG - Using selector: SelectSelector
+2025-09-17 12:14:23,134 - __main__ - INFO - Application shutdown

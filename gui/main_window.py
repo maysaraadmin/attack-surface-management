@@ -1,13 +1,17 @@
 # gui/main_window.py
 import os
 import sys
+import asyncio
 import logging
 from pathlib import Path
 from PyQt5.QtWidgets import (QMainWindow, QTabWidget, QStatusBar, QAction, 
                             QToolBar, QMessageBox, QVBoxLayout, QWidget, 
-                            QFileDialog, QLabel, QHBoxLayout, QSizePolicy, QProgressBar)
+                            QFileDialog, QLabel, QHBoxLayout, QSizePolicy, QProgressBar, QApplication)
 from PyQt5.QtGui import QIcon, QPixmap, QFont, QPalette, QColor
 from PyQt5.QtCore import Qt, QSize, QDir, QSettings
+
+# Import ScanWidget after QApplication is imported
+from .scan_widget import ScanWidget
 
 # Local imports
 from core.scanner import NetworkScanner
@@ -60,10 +64,89 @@ def get_icon(name):
     return icon
 
 class MainWindow(QMainWindow):
+    async def _cleanup(self):
+        """Clean up resources asynchronously"""
+        try:
+            if hasattr(self, 'tab_widget') and self.tab_widget:
+                for i in range(self.tab_widget.count()):
+                    widget = self.tab_widget.widget(i)
+                    if hasattr(widget, 'cleanup_worker'):
+                        try:
+                            if asyncio.iscoroutinefunction(widget.cleanup_worker):
+                                await widget.cleanup_worker()
+                            elif hasattr(widget, 'cleanup_worker'):
+                                # If cleanup_worker exists but isn't async, call it directly
+                                widget.cleanup_worker()
+                        except Exception as e:
+                            logger.error(f"Error during tab cleanup: {str(e)}")
+        except Exception as e:
+            logger.error(f"Error during cleanup: {str(e)}")
+    
+    def closeEvent(self, event):
+        if getattr(self, '_closing', False):
+            event.ignore()
+            return
+            
+        self._closing = True
+        event.ignore()  # Don't close until cleanup is done
+        
+        def _run_cleanup():
+            try:
+                # Create a new event loop for cleanup
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                
+                async def _async_close():
+                    try:
+                        # Clean up all tabs
+                        if hasattr(self, 'tab_widget') and self.tab_widget:
+                            for i in range(self.tab_widget.count()):
+                                widget = self.tab_widget.widget(i)
+                                if hasattr(widget, 'cleanup_worker'):
+                                    try:
+                                        if asyncio.iscoroutinefunction(widget.cleanup_worker):
+                                            await widget.cleanup_worker()
+                                        elif hasattr(widget, 'cleanup_worker'):
+                                            # If cleanup_worker exists but isn't async, call it directly
+                                            widget.cleanup_worker()
+                                    except Exception as e:
+                                        logger.error(f"Error during tab cleanup: {str(e)}")
+                        
+                        # Save window state and geometry
+                        settings = QSettings("AttackSurfaceManager", "MainWindow")
+                        settings.setValue("geometry", self.saveGeometry())
+                        settings.setValue("windowState", self.saveState())
+                        
+                        # Close the application
+                        self.deleteLater()
+                        
+                    except Exception as e:
+                        logger.error(f"Error during shutdown: {str(e)}")
+                    finally:
+                        # Get QApplication instance and quit
+                        app = QApplication.instance()
+                        if app is not None:
+                            app.quit()
+                
+                # Run the async cleanup
+                loop.run_until_complete(_async_close())
+                
+            except Exception as e:
+                logger.error(f"Error in cleanup thread: {str(e)}")
+                app = QApplication.instance()
+                if app is not None:
+                    app.quit()
+        
+        # Run cleanup in a separate thread to avoid blocking the UI
+        import threading
+        cleanup_thread = threading.Thread(target=_run_cleanup, daemon=True)
+        cleanup_thread.start()
+
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Attack Surface Manager")
         self.setGeometry(100, 100, 1200, 800)
+        self._closing = False
         
         try:
             self.setup_ui()
@@ -88,28 +171,39 @@ class MainWindow(QMainWindow):
         self.tab_widget = QTabWidget()
         layout.addWidget(self.tab_widget)
         
-        # Create tabs with error handling
-        try:
-            self.dashboard_tab = DashboardWidget()
-            self.tab_widget.addTab(self.dashboard_tab, "Dashboard")
-        except Exception as e:
-            QMessageBox.warning(self, "Warning", f"Failed to initialize Dashboard: {str(e)}")
+        # Initialize tabs list to keep track of successfully added tabs
+        self.tabs = {}
         
-        try:
-            self.scan_tab = ScanWidget()
-            self.tab_widget.addTab(self.scan_tab, "Scan")
-        except Exception as e:
-            QMessageBox.warning(self, "Warning", f"Failed to initialize Scan tab: {str(e)}")
+        # Define tabs to be added with their initialization parameters
+        tab_definitions = [
+            ("Dashboard", DashboardWidget, "dashboard_tab", {}),
+            ("Scan", ScanWidget, "scan_tab", {"scan_type": "port", "target": ""}),
+            ("Results", ResultsWidget, "results_tab", {})
+        ]
         
-        try:
-            self.results_tab = ResultsWidget()
-            self.tab_widget.addTab(self.results_tab, "Results")
-        except Exception as e:
-            QMessageBox.warning(self, "Warning", f"Failed to initialize Results tab: {str(e)}")
+        for name, widget_class, attr_name, init_params in tab_definitions:
+            try:
+                logger.info(f"Initializing {name} tab...")
+                tab_instance = widget_class(**init_params)
+                self.tab_widget.addTab(tab_instance, name)
+                setattr(self, attr_name, tab_instance)
+                self.tabs[name.lower()] = tab_instance
+                logger.info(f"Successfully initialized {name} tab")
+            except Exception as e:
+                error_msg = f"Failed to initialize {name} tab: {str(e)}"
+                logger.error(error_msg, exc_info=True)
+                QMessageBox.warning(self, f"{name} Tab Error", error_msg)
         
+        # Verify scan tab was initialized
+        if not hasattr(self, 'scan_tab') or self.scan_tab is None:
+            logger.error("Scan tab initialization failed. Available tabs: %s", list(self.tabs.keys()))
+            raise RuntimeError("Failed to initialize Scan tab. Check logs for details.")
+            
         # If no tabs were added successfully, show error and exit
         if self.tab_widget.count() == 0:
-            raise RuntimeError("Failed to initialize any application tabs")
+            raise RuntimeError("Failed to initialize any application tabs. Check the logs for details.")
+            
+        logger.info(f"Successfully initialized {self.tab_widget.count()} tabs")
         
         # Status bar
         self.status_bar = QStatusBar()
@@ -148,6 +242,7 @@ class MainWindow(QMainWindow):
         """Set up the main toolbar with icons and actions"""
         try:
             toolbar = QToolBar("Main Toolbar")
+            toolbar.setObjectName("mainToolbar")  # Add this line to set object name
             toolbar.setIconSize(QSize(24, 24))
             self.addToolBar(toolbar)
             
@@ -234,22 +329,48 @@ class MainWindow(QMainWindow):
     def start_scan(self):
         """Start the scanning process"""
         try:
-            # Check if a scan is already in progress
-            if hasattr(self, 'scan_tab') and hasattr(self.scan_tab, 'is_scanning') and self.scan_tab.is_scanning():
-                QMessageBox.information(self, "Scan in Progress", "A scan is already in progress.")
-                return
+            # First, check if we have a direct reference to scan_tab
+            if hasattr(self, 'scan_tab') and self.scan_tab is not None:
+                scan_tab = self.scan_tab
+            else:
+                # Fallback: Try to find the scan tab by its type
+                scan_tab = None
+                for i in range(self.tab_widget.count()):
+                    tab = self.tab_widget.widget(i)
+                    if isinstance(tab, ScanWidget):  # Check if tab is an instance of ScanWidget
+                        scan_tab = tab
+                        self.scan_tab = tab  # Cache the reference for future use
+                        break
+            
+            if not scan_tab:
+                raise RuntimeError("Scan tab not found. The scan functionality is not available.")
                 
+            # Check if a scan is already in progress
+            if hasattr(scan_tab, 'is_scanning') and callable(scan_tab.is_scanning):
+                if scan_tab.is_scanning():
+                    QMessageBox.information(self, "Scan in Progress", "A scan is already in progress.")
+                    return
+            
             self.statusBar().showMessage("Starting scan...")
             
-            # Ensure scan tab is visible
-            self.tab_widget.setCurrentWidget(self.scan_tab)
-            
-            # Start the scan
-            if hasattr(self.scan_tab, 'start_scan'):
-                self.scan_tab.start_scan()
+            try:
+                # Ensure scan tab is visible
+                self.tab_widget.setCurrentWidget(scan_tab)
+                
+                # Start the scan
+                if hasattr(scan_tab, 'start_scan') and callable(scan_tab.start_scan):
+                    scan_tab.start_scan()
+                    self.statusBar().showMessage("Scan started successfully")
+                else:
+                    raise RuntimeError("Scan tab does not have a start_scan method")
+                    
+            except Exception as e:
+                raise RuntimeError(f"Error while starting scan: {str(e)}")
                 
         except Exception as e:
-            QMessageBox.critical(self, "Scan Error", f"Failed to start scan: {str(e)}")
+            error_msg = f"Failed to start scan: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            QMessageBox.critical(self, "Scan Error", error_msg)
             self.statusBar().showMessage("Scan failed", 5000)
         
     def show_about(self):
